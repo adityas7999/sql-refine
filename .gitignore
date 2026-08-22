@@ -10,6 +10,8 @@ venv/
 .env
 backend/.env
 frontend/.env
+*.pem
+*.key
 
 # Frontend
 frontend/node_modules/
@@ -20,4 +22,3 @@ npm-debug.log*
 .idea/
 .vscode/
 .DS_Store
-

@@ -1,37 +1,44 @@
-import unittest
-
 from optimizer import optimize_sql
 
 
-def columns(_table):
-    return ["student_id", "name", "created_at"]
+def test_simple_select_star_expands_visible_schema_columns():
+    result = optimize_sql("SELECT * FROM orders", lambda table: ["id", "created_at"] if table == "orders" else [])
+    assert result.changed
+    assert result.optimized_query == "SELECT `id`, `created_at` FROM orders"
+    assert result.suggestions[0]["safety"] == "safe"
 
 
-class OptimizerTests(unittest.TestCase):
-    def test_select_star_expands_known_columns(self):
-        result = optimize_sql("SELECT * FROM students;", columns)
-        self.assertTrue(result.optimized_query.startswith("SELECT `student_id`, `name`, `created_at`"))
-        self.assertTrue(any(hint["rule"] == "select-star" and hint["applied"] for hint in result.hints))
+def test_join_select_star_is_not_silently_rewritten():
+    query = "SELECT * FROM orders JOIN customers ON customers.id = orders.customer_id"
+    result = optimize_sql(query, lambda _table: ["id"])
+    assert result.optimized_query == query
+    assert any(item["rule"] == "select-star" and not item["applied"] for item in result.suggestions)
 
-    def test_year_uses_half_open_range_for_datetime_safety(self):
-        result = optimize_sql("SELECT id FROM students WHERE YEAR(created_at) = 2025")
-        self.assertIn("created_at >= '2025-01-01'", result.optimized_query)
-        self.assertIn("created_at < '2026-01-01'", result.optimized_query)
 
-    def test_year_and_month_use_next_month_boundary(self):
-        result = optimize_sql("SELECT id FROM students WHERE YEAR(created_at)=2025 AND MONTH(created_at)=5")
-        self.assertIn("created_at >= '2025-05-01'", result.optimized_query)
-        self.assertIn("created_at < '2025-06-01'", result.optimized_query)
+def test_date_range_applies_only_to_verified_temporal_column():
+    query = "SELECT id FROM orders WHERE YEAR(created_at) = 2025"
+    unverified = optimize_sql(query)
+    assert unverified.optimized_query == query
+    verified = optimize_sql(query, resolve_column_type=lambda column: "datetime" if column == "created_at" else None)
+    assert "created_at >= '2025-01-01'" in verified.optimized_query
+    assert "created_at < '2026-01-01'" in verified.optimized_query
 
-    def test_in_subquery_is_suggestion_not_rewrite(self):
-        query = "SELECT id FROM students WHERE department_id IN (SELECT department_id FROM departments WHERE active = 1)"
+
+def test_year_month_uses_half_open_next_month_boundary():
+    query = "SELECT id FROM orders WHERE YEAR(created_at)=2025 AND MONTH(created_at)=12"
+    result = optimize_sql(query, resolve_column_type=lambda _column: "timestamp")
+    assert "created_at >= '2025-12-01'" in result.optimized_query
+    assert "created_at < '2026-01-01'" in result.optimized_query
+
+
+def test_unsafe_rewrites_remain_suggestions():
+    queries = [
+        "SELECT id FROM users WHERE role='a' OR role='b'",
+        "SELECT DISTINCT role, COUNT(*) FROM users GROUP BY role",
+        "SELECT id FROM users WHERE team_id IN (SELECT id FROM teams)",
+    ]
+    for query in queries:
         result = optimize_sql(query)
-        self.assertEqual(result.optimized_query, query)
-        self.assertTrue(any(hint["rule"] == "in-subquery" and not hint["applied"] for hint in result.hints))
-
-    def test_or_union_is_not_applied_because_duplicates_can_change(self):
-        query = "SELECT id FROM students WHERE active = 1 OR department_id = 2"
-        result = optimize_sql(query)
-        self.assertNotIn("UNION", result.optimized_query)
-        self.assertTrue(any(hint["rule"] == "or-predicate" for hint in result.hints))
+        assert result.optimized_query == query
+        assert any(not item["applied"] and item["safety"] in {"unsafe", "context-dependent"} for item in result.suggestions)
 
