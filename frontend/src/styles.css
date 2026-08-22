@@ -1,0 +1,31 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #dbe5f1; background: #09111d; font-synthesis: none;
+}
+body { min-width: 320px; min-height: 100vh; margin: 0; background: radial-gradient(circle at 75% 0%, #132642 0, #09111d 38rem); color: #dbe5f1; }
+.app-header { background: rgba(7, 15, 26, .88); backdrop-filter: blur(12px); border-color: #203049 !important; position: sticky; top: 0; z-index: 10; }
+.brand { color: #f4f8fc; font-size: 1.35rem; font-weight: 750; letter-spacing: -.04em; }.brand span { color: #55d6be; }
+.status-pill { border: 1px solid #29405b; border-radius: 999px; color: #a8b7c8; font-size: .78rem; padding: .4rem .7rem; }
+.status-pill span { background: #55d6be; border-radius: 50%; display: inline-block; height: .45rem; margin-right: .35rem; width: .45rem; box-shadow: 0 0 10px #55d6be; }
+.workspace-intro .eyebrow { color: #55d6be; font-size: .74rem; font-weight: 800; letter-spacing: .18em; margin-bottom: .4rem; }
+.workspace-intro h1 { font-size: clamp(2rem, 4vw, 3.6rem); font-weight: 760; letter-spacing: -.055em; margin-bottom: .5rem; }
+.workspace-intro > p:last-child { color: #91a3b7; font-size: 1.05rem; }
+.tool-card { --bs-card-bg: #0e1928; --bs-card-border-color: #22344c; box-shadow: 0 18px 50px rgba(0,0,0,.16); overflow: hidden; }
+.tool-card .card-header { background: #111f30; border-color: #22344c; color: #dbe5f1; font-size: .82rem; font-weight: 750; letter-spacing: .06em; padding: .85rem 1rem; text-transform: uppercase; }
+.tool-card .card-body { color: #dbe5f1; }.dialect { color: #55d6be; font-size: .65rem; letter-spacing: .1em; }
+.sql-editor { background: #08111c !important; border-color: #253b55; color: #e6edf6 !important; font-family: "SFMono-Regular", Consolas, monospace; font-size: .93rem; line-height: 1.75; min-height: 230px; padding: 1.2rem; resize: vertical; tab-size: 2; }
+.sql-editor:focus { border-color: #55d6be; box-shadow: 0 0 0 .2rem rgba(85,214,190,.12); }.sql-editor::placeholder { color: #54677d; }
+.btn-primary { --bs-btn-bg: #338cfa; --bs-btn-border-color: #338cfa; --bs-btn-hover-bg: #1e78e8; font-weight: 700; }
+.results-stack { display: grid; gap: 1.25rem; }.result-card.original { border-left: 3px solid #7b8ba0; }.result-card.optimized { border-left: 3px solid #55d6be; }
+.query-code { background: #08111c; border: 1px solid #20324a; border-radius: .45rem; color: #b8e4d8; font-size: .86rem; line-height: 1.65; margin: 0 0 1rem; max-height: 16rem; overflow: auto; padding: 1rem; white-space: pre-wrap; }
+.stat-strip { display: grid; gap: .7rem; grid-template-columns: repeat(3, 1fr); }.stat-strip div, .compare-box, .score-box { background: #0a1522; border: 1px solid #1d3148; border-radius: .45rem; padding: .85rem 1rem; }
+.stat-strip span, .compare-box span, .score-box span { color: #8092a7; display: block; font-size: .72rem; font-weight: 700; letter-spacing: .06em; margin-bottom: .2rem; text-transform: uppercase; }
+.stat-strip strong, .compare-box strong, .score-box strong { color: #e4ebf4; font-size: .95rem; }.score-box strong { font-size: 1.3rem; }
+.score-box.positive { border-color: rgba(85,214,190,.45); }.score-box.positive strong { color: #55d6be; }.score-box.negative { border-color: rgba(255,105,120,.45); }.score-box.negative strong { color: #ff6978; }
+.metric-note { color: #71849a; font-size: .75rem; }.section-label { color: #8296ad; font-size: .75rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.plan-table { border: 1px solid #20324a; border-radius: .4rem; }.plan-table .table { --bs-table-bg: #0a1522; --bs-table-color: #aebdd0; --bs-table-border-color: #1d3047; --bs-table-hover-bg: #122238; --bs-table-hover-color: #eef4fb; font-size: .78rem; }
+.plan-table th { color: #6f849c; font-size: .66rem; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }.plan-table .operation { color: #cfdae7; font-family: "SFMono-Regular", Consolas, monospace; min-width: 260px; }
+.insight-list { display: grid; gap: .7rem; }.insight { align-items: start; background: #0a1522; border: 1px solid #1d3148; border-radius: .45rem; display: flex; gap: .9rem; padding: .85rem; }
+.insight strong { font-size: .82rem; text-transform: capitalize; }.insight p { color: #8fa1b6; font-size: .82rem; margin: .2rem 0 0; }.insight .badge { margin-top: .1rem; }
+@media (max-width: 767px) { .status-pill { display: none; }.stat-strip { grid-template-columns: 1fr; }.workspace-intro h1 { font-size: 2.2rem; }.sql-editor { min-height: 190px; } }
+
