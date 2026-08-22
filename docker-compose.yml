@@ -1,0 +1,49 @@
+services:
+  backend:
+    build: ./backend
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      FLASK_DEBUG: "false"
+      CORS_ORIGINS: http://localhost:8080
+      TRUST_PROXY_HEADERS: "true"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    networks: [sqlrefine]
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    networks: [sqlrefine]
+
+  mysql-integration:
+    image: mysql:8.4
+    profiles: [integration]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_DEMO_ROOT_PASSWORD:-local-root-only}
+      MYSQL_DATABASE: sqlrefine_demo
+      MYSQL_USER: sqlrefine
+      MYSQL_PASSWORD: ${MYSQL_DEMO_PASSWORD:-local-reader-only}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-integration-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_DEMO_ROOT_PASSWORD:-local-root-only}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [sqlrefine]
+
+networks:
+  sqlrefine:
+
+volumes:
+  mysql-integration-data:
