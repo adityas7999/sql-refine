@@ -8,17 +8,28 @@ venv/
 
 # Environment and credentials
 .env
+.env.*
+!.env.example
 backend/.env
 frontend/.env
+*.local
+*.local.*
 *.pem
 *.key
+*.p12
+*.pfx
 
 # Frontend
 frontend/node_modules/
 frontend/dist/
 npm-debug.log*
+*.log
+
+# Local-only analysis artifacts
+rule-test-results/
 
 # Editors and OS
 .idea/
 .vscode/
 .DS_Store
+Thumbs.db

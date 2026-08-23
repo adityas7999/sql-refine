@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Alert, Button, Card, Col, Form, Row } from 'react-bootstrap'
 
 const initial = {
-  name: 'My MySQL server', host: 'localhost', port: 3306, username: '', password: '',
+  name: 'MySQL connection', host: '', port: 3306, username: '', password: '',
   database: '', sslEnabled: false, sslVerifyCertificate: true,
 }
 
@@ -63,4 +63,3 @@ export default function ConnectionPanel({ connected, summary, onTest, onConnect,
     </Card>
   )
 }
-

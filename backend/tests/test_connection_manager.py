@@ -34,6 +34,11 @@ def test_session_is_ephemeral_and_deletable():
         manager.get_settings(session_id)
 
 
+def test_connection_settings_repr_never_exposes_password():
+    connection_settings = settings()
+    assert "secret" not in repr(connection_settings)
+
+
 class TimeoutCursor:
     def __enter__(self): return self
     def __exit__(self, *_args): return False
