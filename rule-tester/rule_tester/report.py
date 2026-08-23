@@ -17,6 +17,7 @@ def _aggregate_session(session: dict) -> dict:
         "median_improvement_percent": session["median_improvement_percent"],
         "estimated_cost": session["estimated_cost"],
         "cost_improvement_percent": session["cost_improvement_percent"],
+        "composite_improvement_percent": session["composite_improvement_percent"],
     }
 
 

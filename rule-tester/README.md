@@ -69,7 +69,7 @@ The defaults are one warm-up, seven measured samples for each version in each of
 
     python -m rule_tester.cli --rule select-star --original-file /safe/local/path/original.sql --warmups 2 --samples 15 --timeout-seconds 10 --max-rows 100000
 
-Each pair alternates execution order, and session two starts with the opposite order. Standard output shows raw timing samples, median, mean, sample variance, p95, paired-win rate, estimated EXPLAIN JSON cost, every promotion check, and the final decision. It never shows SQL or result rows.
+Each pair alternates execution order, and session two starts with the opposite order. Standard output shows raw timing samples, median, mean, sample variance, p95, paired-win rate, estimated EXPLAIN JSON cost, the composite improvement, every promotion check, and the final decision. Eligibility requires exact equivalence, no errors, the other safety checks, and a strictly greater than 5% composite score in both sessions: 60% median-runtime improvement plus 40% estimated-cost improvement. It never shows SQL or result rows.
 
 Manual candidates are intentionally unable to satisfy the rule-level machine-precondition and schema-agnostic checks. Their measurements are evidence for a developer to use when designing a conservative rule, not authorization to enable one.
 

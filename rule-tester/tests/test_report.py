@@ -25,6 +25,7 @@ def test_report_is_redacted_and_omits_raw_samples(tmp_path):
         "median_improvement_percent": 50.0,
         "estimated_cost": {"original": 2.0, "candidate": 1.0},
         "cost_improvement_percent": 50.0,
+        "composite_improvement_percent": 50.0,
     }
     benchmark = {"complete": True, "error_code": None, "sessions": [session, {**session, "session": 2}]}
 

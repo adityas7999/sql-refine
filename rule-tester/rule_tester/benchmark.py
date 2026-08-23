@@ -4,7 +4,9 @@ import math
 import statistics
 import time
 
+from .bootstrap import BACKEND_ROOT  # noqa: F401
 from .mysql_runtime import QueryExecutionFailure, connect, execute_complete, explain_cost
+from analyzer import COST_WEIGHT, TIME_WEIGHT
 
 
 def _percentile_95(values: list[float]) -> float:
@@ -26,6 +28,12 @@ def improvement_percent(original: float | None, candidate: float | None) -> floa
     if original is None or candidate is None or original <= 0:
         return None
     return (original - candidate) / original * 100.0
+
+
+def composite_improvement(runtime_improvement: float | None, cost_improvement: float | None) -> float | None:
+    if runtime_improvement is None or cost_improvement is None:
+        return None
+    return runtime_improvement * TIME_WEIGHT + cost_improvement * COST_WEIGHT
 
 
 def _timed_query(connection, query: str, max_rows: int) -> float:
@@ -61,17 +69,22 @@ def _session(config, original: str, candidate: str, *, session_index: int, warmu
         candidate_time < original_time
         for original_time, candidate_time in zip(collected["original"], collected["candidate"])
     )
+    median_improvement = improvement_percent(
+        original_stats["median_ms"], candidate_stats["median_ms"]
+    )
+    cost_improvement = improvement_percent(costs["original"], costs["candidate"])
     return {
         "session": session_index + 1,
         "raw_samples_ms": collected,
         "original": original_stats,
         "candidate": candidate_stats,
         "paired_win_rate_percent": wins / samples * 100.0,
-        "median_improvement_percent": improvement_percent(
-            original_stats["median_ms"], candidate_stats["median_ms"]
-        ),
+        "median_improvement_percent": median_improvement,
         "estimated_cost": costs,
-        "cost_improvement_percent": improvement_percent(costs["original"], costs["candidate"]),
+        "cost_improvement_percent": cost_improvement,
+        "composite_improvement_percent": composite_improvement(
+            median_improvement, cost_improvement
+        ),
     }
 
 
@@ -119,8 +132,8 @@ def promotion_decision(equivalence, benchmark: dict, candidate) -> dict:
         "two_sessions": len(benchmark.get("sessions", [])) == 2,
         "minimum_samples_each": False,
         "paired_win_rate_at_least_80_percent": False,
-        "median_improvement_at_least_15_percent": False,
-        "estimated_cost_improvement_at_least_10_percent_when_available": False,
+        "runtime_and_cost_available": False,
+        "composite_improvement_greater_than_5_percent": False,
         "strict_machine_checkable_preconditions": candidate.strict_machine_preconditions,
         "no_hard_coded_identifiers": candidate.schema_agnostic_rule,
     }
@@ -133,21 +146,15 @@ def promotion_decision(equivalence, benchmark: dict, candidate) -> dict:
         checks["paired_win_rate_at_least_80_percent"] = all(
             item["paired_win_rate_percent"] >= 80.0 for item in sessions
         )
-        checks["median_improvement_at_least_15_percent"] = all(
-            (item["median_improvement_percent"] or float("-inf")) >= 15.0 for item in sessions
+        checks["runtime_and_cost_available"] = all(
+            item["median_improvement_percent"] is not None
+            and item["cost_improvement_percent"] is not None
+            for item in sessions
         )
-        cost_checks = []
-        for item in sessions:
-            original_cost = item["estimated_cost"]["original"]
-            candidate_cost = item["estimated_cost"]["candidate"]
-            if original_cost is None and candidate_cost is None:
-                continue
-            cost_checks.append(
-                original_cost is not None
-                and candidate_cost is not None
-                and (item["cost_improvement_percent"] or float("-inf")) >= 10.0
-            )
-        checks["estimated_cost_improvement_at_least_10_percent_when_available"] = all(cost_checks)
+        checks["composite_improvement_greater_than_5_percent"] = all(
+            (item.get("composite_improvement_percent") or float("-inf")) > 5.0
+            for item in sessions
+        )
 
     if not equivalence.equivalent:
         status = "rejected"

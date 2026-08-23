@@ -4,7 +4,7 @@ from contextlib import contextmanager
 import pytest
 
 from rule_tester import benchmark
-from rule_tester.benchmark import promotion_decision, sample_statistics
+from rule_tester.benchmark import composite_improvement, promotion_decision, sample_statistics
 from rule_tester.models import QueryOutput
 from rule_tester.models import EquivalenceEvidence
 
@@ -30,6 +30,9 @@ def _session(number, win_rate=100.0, median_improvement=20.0, cost_improvement=1
         "median_improvement_percent": median_improvement,
         "estimated_cost": {"original": 100.0, "candidate": 88.0},
         "cost_improvement_percent": cost_improvement,
+        "composite_improvement_percent": composite_improvement(
+            median_improvement, cost_improvement
+        ),
     }
 
 
@@ -61,6 +64,23 @@ def test_one_inconsistent_session_rejects_candidate():
 
     assert decision["status"] == "rejected"
     assert not decision["checks"]["paired_win_rate_at_least_80_percent"]
+
+
+def test_composite_score_must_be_strictly_greater_than_five_percent():
+    equivalence = EquivalenceEvidence(True, False, 10, 10, "EQUIVALENT")
+    candidate = SimpleNamespace(strict_machine_preconditions=True, schema_agnostic_rule=True)
+    benchmark = {
+        "complete": True,
+        "sessions": [
+            _session(1, median_improvement=5.0, cost_improvement=5.0),
+            _session(2, median_improvement=5.0, cost_improvement=5.0),
+        ],
+    }
+
+    decision = promotion_decision(equivalence, benchmark, candidate)
+
+    assert decision["status"] == "rejected"
+    assert not decision["checks"]["composite_improvement_greater_than_5_percent"]
 
 
 def test_manual_candidate_is_never_automatically_eligible():
