@@ -18,7 +18,7 @@ class Config:
     MAX_CONTENT_LENGTH = _integer("MAX_REQUEST_BYTES", 262_144)
     CORS_ORIGINS = [
         origin.strip()
-        for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+        for origin in os.getenv("CORS_ORIGINS", "").split(",")
         if origin.strip()
     ]
     CONNECTION_SESSION_TTL_SECONDS = _integer("CONNECTION_SESSION_TTL_SECONDS", 1800)
@@ -35,4 +35,3 @@ class Config:
     RATELIMIT_DEFAULT = os.getenv("RATELIMIT_DEFAULT", "120 per minute")
     RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI", "memory://")
     TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "false").lower() == "true"
-

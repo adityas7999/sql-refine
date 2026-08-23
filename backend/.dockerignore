@@ -3,5 +3,8 @@ __pycache__
 .pytest_cache
 tests
 *.pyc
-.env
-
+.env*
+*.pem
+*.key
+*.p12
+*.pfx

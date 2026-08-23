@@ -12,7 +12,7 @@ from errors import ConnectionSessionError, DatabaseAccessError, QueryTimeoutErro
 from security import validate_identifier
 
 
-@dataclass
+@dataclass(repr=False)
 class ConnectionSettings:
     name: str
     host: str

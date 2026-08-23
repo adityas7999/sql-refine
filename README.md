@@ -79,13 +79,13 @@ Open `http://localhost:5173`. Vite proxies `/api` to `http://127.0.0.1:5000`.
 
 ## Create a read-only MySQL account
 
-Run as a MySQL administrator and replace the example host, user, password, and database:
+Run as a MySQL administrator and replace the example host, user, password, and database. Create and deliver the secret through your approved secret-management process; do not paste a real password into source files, shell history, tickets, or chat:
 
 ```sql
-CREATE USER 'sqlrefine_reader'@'10.%' IDENTIFIED BY 'use-a-long-random-password' REQUIRE SSL;
-GRANT SELECT ON `your_database`.* TO 'sqlrefine_reader'@'10.%';
+CREATE USER 'sqlrefine_reader'@'sqlrefine-host.example' IDENTIFIED BY '<strong-random-secret>' REQUIRE SSL;
+GRANT SELECT ON `your_database`.* TO 'sqlrefine_reader'@'sqlrefine-host.example';
 FLUSH PRIVILEGES;
-SHOW GRANTS FOR 'sqlrefine_reader'@'10.%';
+SHOW GRANTS FOR 'sqlrefine_reader'@'sqlrefine-host.example';
 ```
 
 Do not grant `FILE`, `PROCESS`, `SUPER`, `EXECUTE`, DDL, or DML privileges. Prefer a staging/read-replica endpoint and network allowlists. A user with access to several databases will see each one in the selector.
@@ -127,21 +127,36 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Open `http://localhost:8080`. When MySQL runs on the Docker host, enter `host.docker.internal` as its host. For a remote MySQL server, enter its routable hostname.
+Open `http://localhost:8080` for local evaluation. In a real deployment, publish the frontend through an HTTPS reverse proxy and enter a MySQL hostname that is routable from the backend container. SQLRefine deliberately does not inject host-machine aliases or assume where the customer database is located.
+
+The bundled frontend calls `/api` on the same origin, so `CORS_ORIGINS` should remain empty. Set it only when a separately hosted, trusted frontend must call the API directly. Never use `*` for a credential-handling deployment.
 
 An optional disposable MySQL 8 service is available for integration work:
 
 ```bash
+export MYSQL_DEMO_ROOT_PASSWORD='<temporary-random-root-secret>'
+export MYSQL_DEMO_PASSWORD='<temporary-random-reader-secret>'
 docker compose --profile integration up --build
 ```
 
-From SQLRefine, its hostname is `mysql-integration`, port `3306`, database `sqlrefine_demo`, user `sqlrefine`, and password from `MYSQL_DEMO_PASSWORD`. These defaults are for isolated local development only.
+Windows PowerShell uses `$env:MYSQL_DEMO_ROOT_PASSWORD = '...'` and `$env:MYSQL_DEMO_PASSWORD = '...'` instead. The profile has no password defaults and fails closed when the variables are empty. From SQLRefine, its hostname is `mysql-integration`, port `3306`, database `sqlrefine_demo`, user `sqlrefine`, and password from `MYSQL_DEMO_PASSWORD`. This service is disposable test infrastructure, not a production database.
+
+### Production checklist
+
+- Terminate HTTPS at a trusted reverse proxy and add HSTS there after HTTPS is verified.
+- Keep the backend network-private; expose only the frontend proxy.
+- Inject `.env` values with the deployment platform's secret mechanism and never bake `.env*`, keys, or certificates into images.
+- Use a dedicated, origin-restricted, TLS-enabled MySQL account with only `SELECT` on the intended databases.
+- Keep `CORS_ORIGINS` empty for the bundled same-origin deployment or list exact trusted origins for split hosting.
+- Keep one backend worker while credentials are stored in process memory. Use an encrypted shared session implementation before scaling horizontally.
+- Use a shared rate-limit backend such as Redis before running multiple application instances.
+- Do not enable the disposable `integration` Compose profile in production.
 
 ## Configuration
 
 | Variable | Default | Purpose |
 | --- | ---: | --- |
-| `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed browser origins |
+| `CORS_ORIGINS` | empty | Exact comma-separated browser origins; empty allows same-origin use only |
 | `CONNECTION_SESSION_TTL_SECONDS` | `1800` | Idle lifetime of server-side credentials |
 | `MAX_CONNECTION_SESSIONS` | `100` | Maximum in-memory sessions |
 | `DB_CONNECT_TIMEOUT_SECONDS` | `5` | MySQL connection timeout |
@@ -177,7 +192,7 @@ npm ci
 npm run build
 ```
 
-To run the optional MySQL integration test, start the integration profile and set `MYSQL_INTEGRATION_HOST`, `MYSQL_INTEGRATION_PORT`, `MYSQL_INTEGRATION_USER`, `MYSQL_INTEGRATION_PASSWORD`, and `MYSQL_INTEGRATION_DATABASE` for the test process.
+To run the optional MySQL integration test, start the integration profile and set all five `MYSQL_INTEGRATION_HOST`, `MYSQL_INTEGRATION_PORT`, `MYSQL_INTEGRATION_USER`, `MYSQL_INTEGRATION_PASSWORD`, and `MYSQL_INTEGRATION_DATABASE` variables for the test process. The test has no credential or database-name fallbacks.
 
 ## Troubleshooting
 
