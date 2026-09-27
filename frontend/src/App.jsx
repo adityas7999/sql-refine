@@ -1,13 +1,14 @@
 import { useState } from 'react'
-import { Alert, Form } from 'react-bootstrap'
+import { Alert, Form, Nav } from 'react-bootstrap'
 import ConnectionPanel from './components/ConnectionPanel.jsx'
 import Header from './components/Header.jsx'
 import MetricsComparison from './components/MetricsComparison.jsx'
+import ManualComparison from './components/ManualComparison.jsx'
 import OptimizationHints from './components/OptimizationHints.jsx'
 import QueryEditor from './components/QueryEditor.jsx'
 import QueryResult from './components/QueryResult.jsx'
 import SchemaExplorer from './components/SchemaExplorer.jsx'
-import { analyzeQuery, createConnectionSession, deleteConnectionSession, listDatabases, loadSchema, testConnection } from './services/api.js'
+import { analyzeQuery, compareQueries, createConnectionSession, deleteConnectionSession, listDatabases, loadSchema, testConnection } from './services/api.js'
 
 const quote = (identifier) => `\`${String(identifier).replaceAll('`', '``')}\``
 
@@ -24,6 +25,14 @@ export default function App() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [schemaLoading, setSchemaLoading] = useState(false)
+  const [view, setView] = useState('analyze')
+  const [originalQuery, setOriginalQuery] = useState('')
+  const [candidateQuery, setCandidateQuery] = useState('')
+  const [compareMode, setCompareMode] = useState('plan')
+  const [compareConfirmed, setCompareConfirmed] = useState(false)
+  const [preview, setPreview] = useState(false)
+  const [previewConfirmed, setPreviewConfirmed] = useState(false)
+  const [compareResult, setCompareResult] = useState(null)
 
   async function connect(details) {
     setBusy(true); setError('')
@@ -42,7 +51,7 @@ export default function App() {
   }
 
   async function selectDatabase(name, activeSession = sessionId) {
-    setDatabase(name); setSchema(null); setResult(null); setSchemaLoading(true); setError('')
+    setDatabase(name); setSchema(null); setResult(null); setCompareResult(null); setSchemaLoading(true); setError('')
     try { setSchema(await loadSchema(activeSession, name)) }
     catch (requestError) { setError(requestError.message) }
     finally { setSchemaLoading(false) }
@@ -51,6 +60,7 @@ export default function App() {
   async function disconnect() {
     try { await deleteConnectionSession(sessionId) } catch { /* Backend may already have expired it. */ }
     setSessionId(null); setConnection(null); setDatabases([]); setDatabase(''); setSchema(null); setQuery(''); setResult(null); setRuntimeConfirmed(false)
+    setOriginalQuery(''); setCandidateQuery(''); setCompareResult(null); setCompareConfirmed(false); setPreview(false); setPreviewConfirmed(false)
   }
 
   async function submit(event) {
@@ -62,9 +72,24 @@ export default function App() {
     } finally { setBusy(false) }
   }
 
+  async function submitComparison(event) {
+    event.preventDefault(); setBusy(true); setError(''); setCompareResult(null)
+    try {
+      setCompareResult(await compareQueries(sessionId, {
+        database, originalQuery, candidateQuery, mode: compareMode,
+        confirmRuntime: compareMode === 'runtime' && compareConfirmed,
+        preview, confirmPreview: preview && previewConfirmed,
+      }))
+    } catch (requestError) {
+      setError(requestError.message)
+      if (requestError.status === 401) await disconnect()
+    } finally { setBusy(false) }
+  }
+
   function useTable(table) {
     setQuery(`SELECT *\nFROM ${quote(table.name)}\nLIMIT 100;`)
     setResult(null)
+    setView('analyze')
   }
 
   return (
@@ -74,7 +99,17 @@ export default function App() {
       {error && <Alert variant="danger" className="mt-3" dismissible onClose={() => setError('')}>{error}</Alert>}
       {sessionId && <>
         <div className="database-bar mt-3"><Form.Label>Active database</Form.Label><Form.Select value={database} onChange={(event) => selectDatabase(event.target.value)}><option value="" disabled>Select a database</option>{databases.map((item) => <option key={item.name} value={item.name}>{item.name}{item.system ? ' (system)' : ''}</option>)}</Form.Select></div>
+        <Nav variant="tabs" activeKey={view} onSelect={(key) => { setView(key); setError('') }} className="workspace-tabs mt-3">
+          <Nav.Item><Nav.Link eventKey="analyze">Analyze and optimize</Nav.Link></Nav.Item>
+          <Nav.Item><Nav.Link eventKey="compare">Compare two queries</Nav.Link></Nav.Item>
+        </Nav>
         <div className="workspace-grid mt-3"><SchemaExplorer schema={schema} loading={schemaLoading} onUseTable={useTable} /><section className="query-workspace">
+          {view === 'compare' ? <ManualComparison
+            original={originalQuery} setOriginal={setOriginalQuery} candidate={candidateQuery} setCandidate={setCandidateQuery}
+            mode={compareMode} setMode={setCompareMode} confirmed={compareConfirmed} setConfirmed={setCompareConfirmed}
+            preview={preview} setPreview={setPreview} previewConfirmed={previewConfirmed} setPreviewConfirmed={setPreviewConfirmed}
+            loading={busy} disabled={!database || schemaLoading} onSubmit={submitComparison} result={compareResult}
+          /> : <>
           <QueryEditor query={query} setQuery={setQuery} onSubmit={submit} loading={busy} mode={mode} setMode={setMode} confirmed={runtimeConfirmed} setConfirmed={setRuntimeConfirmed} disabled={!database || schemaLoading} />
           {result && <div className="results-stack mt-3">
             {result.warnings?.map((warning) => <Alert variant="warning" key={warning}>{warning}</Alert>)}
@@ -82,7 +117,7 @@ export default function App() {
             <OptimizationHints suggestions={result.suggestions} />
             <QueryResult title="Original query" result={result.original} accent="original" />
             <QueryResult title="Safe optimized query" result={result.optimized} accent="optimized" />
-          </div>}
+          </div>}</>}
         </section></div>
       </>}
     </main></>

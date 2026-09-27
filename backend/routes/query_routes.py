@@ -1,6 +1,7 @@
 """Secure JSON API for connection, schema, and query analysis workflows."""
 
 from flask import Blueprint, current_app, jsonify, request
+from pymysql.cursors import Cursor
 from sqlglot import exp, parse_one
 
 from analyzer import benchmark_pair, calculate_metrics, explain_json
@@ -161,3 +162,73 @@ def analyze():
     audit("query.analyzed", session_id=session_id, database=database, mode=mode, optimized=bool(optimized_query), suggestion_count=len(optimization.suggestions))
     return jsonify(result)
 
+
+def _preview(connection, query: str) -> dict:
+    """Run an explicitly requested, server-limited display query.
+
+    This is a preview, never an equivalence check. The outer LIMIT bounds the
+    returned rows even when the original query has no LIMIT.
+    """
+    preview_query = f"SELECT * FROM ({query}) AS _sqlrefine_preview LIMIT 5"
+    with connection.cursor(Cursor) as cursor:
+        cursor.execute(preview_query)
+        columns = [item[0] for item in cursor.description or ()]
+        rows = cursor.fetchall()
+    return {
+        "columns": columns[:8],
+        "rows": [[None if value is None else str(value)[:160] for value in row[:8]] for row in rows],
+        "rowLimit": 5,
+        "columnLimit": 8,
+        "cellCharacterLimit": 160,
+        "truncatedColumns": len(columns) > 8,
+    }
+
+
+@api.post("/compare")
+def compare_queries():
+    payload = _json_payload()
+    original_query = validate_read_only_query(payload.get("originalQuery"))
+    candidate_query = validate_read_only_query(payload.get("candidateQuery"))
+    if original_query == candidate_query:
+        raise ValidationError("Provide two different queries to compare.", "IDENTICAL_QUERIES")
+    database = validate_identifier(payload.get("database"), "database name")
+    mode = str(payload.get("mode") or "plan").lower()
+    if mode not in {"plan", "runtime"}:
+        raise ValidationError("Comparison mode must be 'plan' or 'runtime'.", "INVALID_ANALYSIS_MODE")
+    if mode == "runtime" and payload.get("confirmRuntime") is not True:
+        raise ValidationError("Runtime benchmarking requires explicit confirmation.", "RUNTIME_CONFIRMATION_REQUIRED")
+    if payload.get("preview") is True and payload.get("confirmPreview") is not True:
+        raise ValidationError("Displaying query rows requires explicit confirmation.", "PREVIEW_CONFIRMATION_REQUIRED")
+
+    session_id = _session_id()
+    with _manager().connect(session_id, database) as connection:
+        if mode == "plan":
+            original = explain_json(connection, original_query)
+            candidate = explain_json(connection, candidate_query)
+        else:
+            benchmark = benchmark_pair(
+                connection, original_query, candidate_query,
+                warmups=current_app.config["RUNTIME_WARMUPS"],
+                samples=current_app.config["RUNTIME_SAMPLES"],
+            )
+            original = benchmark["original"]
+            candidate = benchmark.get("optimized") or benchmark["original"]
+        previews = None
+        if payload.get("preview") is True:
+            previews = {
+                "original": _preview(connection, original_query),
+                "candidate": _preview(connection, candidate_query),
+            }
+    audit("query.compared", session_id=session_id, database=database, mode=mode, preview=previews is not None)
+    response = jsonify({
+        "database": database, "mode": mode, "original": original, "candidate": candidate,
+        "metrics": calculate_metrics(original, candidate),
+        "previews": previews,
+        "warnings": [
+            "Plans and samples do not prove output equivalence or general performance.",
+            *(["EXPLAIN ANALYZE executes both queries multiple times."] if mode == "runtime" else []),
+            *(["Preview shows at most five rows and eight columns per query; it is not a full-result comparison and does not guarantee row order."] if previews else []),
+        ],
+    })
+    response.headers["Cache-Control"] = "no-store"
+    return response

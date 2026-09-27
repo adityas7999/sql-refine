@@ -34,4 +34,4 @@ export const deleteConnectionSession = (sessionId) => request('/connection-sessi
 export const listDatabases = (sessionId) => request('/databases', { sessionId })
 export const loadSchema = (sessionId, database) => request(`/schema?database=${encodeURIComponent(database)}`, { sessionId })
 export const analyzeQuery = (sessionId, payload) => request('/analyze', { method: 'POST', sessionId, body: JSON.stringify(payload) })
-
+export const compareQueries = (sessionId, payload) => request('/compare', { method: 'POST', sessionId, body: JSON.stringify(payload) })
