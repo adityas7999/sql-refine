@@ -1,51 +1,104 @@
 # SQLRefine
 
-**Secure, self-hosted MySQL query planning, schema exploration, and conservative optimization.**
+SQLRefine is a self-hosted MySQL query analysis and optimization tool built for teams that want safer, more explainable SQL review without exposing database credentials to the browser.
 
-SQLRefine lets an authorized user connect through a Flask backend to any compatible MySQL server, inspect accessible schemas, generate non-executing JSON plans by default, and optionally run explicitly confirmed benchmarks. The browser never connects directly to MySQL.
+It gives you:
+
+- a secure connection flow to MySQL through a backend-only session
+- schema discovery and table inspection from real metadata
+- plan-only analysis using `EXPLAIN FORMAT=JSON`
+- optional runtime benchmarks with `EXPLAIN ANALYZE`
+- conservative optimization suggestions that only apply when the rewrite is proven safe
 
 ```text
-React/Vite → HTTPS/JSON → Flask security boundary → PyMySQL → authorized MySQL server
-                            ├─ expiring credential session
-                            ├─ SQLGlot MySQL AST policy
-                            ├─ INFORMATION_SCHEMA discovery
-                            ├─ EXPLAIN FORMAT=JSON (default)
-                            └─ EXPLAIN ANALYZE (explicit benchmark only)
+Browser UI → HTTPS/JSON → Flask security boundary → PyMySQL → authorized MySQL server
+                     ├─ expiring credential session
+                     ├─ SQLGlot AST validation
+                     ├─ INFORMATION_SCHEMA discovery
+                     ├─ EXPLAIN FORMAT=JSON (default)
+                     └─ EXPLAIN ANALYZE (explicit benchmark only)
 ```
 
-## Security model
+## Why teams use SQLRefine
 
-- MySQL credentials are submitted to the self-hosted backend, held only in expiring process memory, and never returned. React clears the password after creating a session and stores only an opaque session ID in component memory—not `localStorage`, `sessionStorage`, cookies, URLs, or Git.
-- SQLGlot parses the query with the MySQL dialect. SQLRefine accepts exactly one top-level SELECT/SELECT CTE, rejects comments, mutation/DDL/admin AST nodes, locking, file access, procedure calls, and dangerous functions such as `SLEEP`, `BENCHMARK`, and `LOAD_FILE`.
-- Metadata queries use parameters against `INFORMATION_SCHEMA`; database and table identifiers are separately validated.
-- Connections have connect/read/write limits, every session receives `MAX_EXECUTION_TIME`, request bodies are capped, endpoints are rate-limited, CORS is allowlisted, errors are sanitized, and audit events omit SQL and secrets.
-- SQLRefine does not use cookie authentication, so CSRF tokens are not applicable to this design. The opaque connection-session ID is sent in a custom header and never persisted by the supplied frontend.
+- Query planning without execution by default
+- Safer review of MySQL queries before production changes
+- Better schema visibility without a direct DB client in the browser
+- Conservative suggestions instead of risky automatic rewrites
+- Clear separation between estimated plans and measured runtime
 
-These controls are defense in depth. **Always create a dedicated MySQL account with `SELECT` only, restrict its network origin, and deploy SQLRefine behind HTTPS.** `EXPLAIN ANALYZE` executes the query and can still consume resources despite a read-only account.
+## Product at a glance
 
-The default credential store is intentionally ephemeral. Restarting the backend expires all sessions. Run one Gunicorn worker; multiple processes do not share sessions. For horizontal scaling, implement the same session-store interface using encrypted shared storage and a server-side key.
+| Area | Details |
+| --- | --- |
+| Primary use | MySQL query inspection, analysis, and safe optimization review |
+| Default mode | `EXPLAIN FORMAT=JSON` |
+| Runtime mode | `EXPLAIN ANALYZE` with explicit confirmation |
+| Security model | Credentials stay in backend memory only |
+| Data access | Read-only MySQL account recommended |
+| Optimization style | Narrow, schema-verified rewrites only |
+| Frontend | React + Vite |
+| Backend | Flask + PyMySQL + SQLGlot |
 
-## Features
+## Key metrics and defaults
 
-- Test a connection without saving it.
-- Optional TLS with certificate validation; CA trust is configured on the backend.
-- Discover databases available to the connected MySQL account.
-- Search tables and columns; inspect types, primary keys, indexes, and foreign-key relationships.
-- Generate a query from an actual discovered table—no assumed schema or sample table.
-- Default plan-only analysis with `EXPLAIN FORMAT=JSON`.
-- Explicit runtime mode with alternating original/optimized order, warm-ups, multiple samples, median, and variance.
-- Safety-classified optimization insights. Only verified simple rewrites are applied; context-dependent or unsafe transformations remain warnings.
+These values define the product’s operational guardrails:
+
+| Setting | Default | Purpose |
+| --- | ---: | --- |
+| `CONNECTION_SESSION_TTL_SECONDS` | `1800` | Session lifetime for backend-held credentials |
+| `MAX_CONNECTION_SESSIONS` | `100` | In-memory connection session cap |
+| `DB_CONNECT_TIMEOUT_SECONDS` | `5` | MySQL connect timeout |
+| `DB_READ_TIMEOUT_SECONDS` | `30` | MySQL read timeout |
+| `DB_WRITE_TIMEOUT_SECONDS` | `10` | MySQL write timeout |
+| `STATEMENT_TIMEOUT_MS` | `10000` | MySQL `MAX_EXECUTION_TIME` per query |
+| `RUNTIME_WARMUPS` | `1` | Unrecorded benchmark warm-ups |
+| `RUNTIME_SAMPLES` | `3` | Recorded benchmark samples |
+| `SCHEMA_MAX_TABLES` | `500` | Schema response limit |
+| `SCHEMA_MAX_COLUMNS` | `10000` | Column discovery limit |
+| `RATELIMIT_DEFAULT` | `120 per minute` | Default per-client request limit |
 
 ## Requirements
 
 - Python 3.12 recommended
 - Node.js 22 recommended
-- MySQL 8.0.18+ for runtime `EXPLAIN ANALYZE`; JSON plans work on earlier supported MySQL 8 releases
+- MySQL 8.0.18+ for `EXPLAIN ANALYZE`; JSON plans work on earlier supported MySQL 8 releases
 - Docker Compose v2 for container deployment
 
-## Local installation
+## Quick start
 
-Copy configuration:
+### One-command startup
+
+From the project root, run:
+
+```bash
+python start.py
+```
+
+On Windows PowerShell:
+
+```powershell
+python .\start.py
+```
+
+This single command will:
+
+- create a local `.env` file if needed
+- create the backend virtual environment if missing
+- install backend dependencies and frontend dependencies
+- start the Flask API at `http://127.0.0.1:5000`
+- start the Vite app at `http://localhost:4173`
+- open the app in your default browser
+
+If you prefer the Node wrapper:
+
+```bash
+npm start
+```
+
+### Manual startup
+
+Copy the example configuration:
 
 ```bash
 cp .env.example .env
@@ -57,7 +110,7 @@ Windows PowerShell:
 Copy-Item .env.example .env
 ```
 
-Backend:
+Start the backend in one terminal:
 
 ```bash
 cd backend
@@ -67,19 +120,107 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Frontend, in a second terminal:
+Start the frontend in another terminal:
 
 ```bash
 cd frontend
-npm ci
-npm run dev
+npm install
+npm run dev -- --host 0.0.0.0 --port 4173
 ```
 
-Open `http://localhost:5173`. Vite proxies `/api` to `http://127.0.0.1:5000`.
+Then open:
+
+- `http://localhost:4173`
+
+The frontend proxies `/api` to the backend at `http://127.0.0.1:5000`.
+
+## How to use SQLRefine
+
+1. Connect to a MySQL instance using the connection form.
+2. Test the connection without saving credentials.
+3. Select a database from the discovered list.
+4. Explore tables and columns from real schema metadata.
+5. Paste a SQL statement to analyze.
+6. Choose one of the analysis modes:
+   - `plan`: safe, non-executing plan review
+   - `runtime`: benchmark with explicit confirmation
+7. Review the output and optimization hints.
+8. Apply any proposed rewrites only after validating business and data semantics.
+
+## Supported analysis modes
+
+### 1) Plan-only mode (default)
+
+Uses `EXPLAIN FORMAT=JSON`.
+
+This mode is designed to understand:
+
+- access paths
+- rows estimated by the optimizer
+- table scan vs index usage
+- cost signals from MySQL
+
+It does not execute the query, which makes it suitable for early review and safe investigation.
+
+### 2) Runtime benchmark mode
+
+Uses `EXPLAIN ANALYZE`.
+
+This mode executes the SQL and is intentionally gated behind explicit user confirmation. It is useful for measuring real query cost, but it should be used carefully against production or sensitive workloads.
+
+SQLRefine uses:
+
+- alternating original/optimized order
+- warm-up rounds
+- multiple samples
+- median timing and variance reporting
+
+## Optimization safety model
+
+SQLRefine is intentionally conservative. It only applies transformations that can be proven safe in the schema context.
+
+### Safe automatic rewrites
+
+- `SELECT *` expansion to explicit visible columns from a single table
+- `YEAR(column) = 2025` to a half-open range when the column is verified as a temporal type
+- `YEAR(column) = 2025 AND MONTH(column) = 12` to an equivalent half-open date range when the type is verified
+
+### Suggestions only (not auto-applied)
+
+These remain warnings or recommendations because they may change duplicates, ordering, NULL behavior, row counts, or expression semantics:
+
+- `OR` to `UNION ALL`
+- removing `DISTINCT`
+- `IN` to `EXISTS` without additional verification
+- removing case-conversion functions
+- inventing a `LIMIT`
+- substring, rounding, or collation-dependent rewrites
+
+## Security and deployment guidance
+
+SQLRefine is designed to keep database credentials out of the browser.
+
+### Security model
+
+- MySQL credentials are held in the backend only, in expiring process memory
+- the frontend stores only an opaque session identifier
+- credentials are never persisted in `localStorage`, `sessionStorage`, cookies, URLs, or Git
+- database access is restricted through a dedicated read-only MySQL account
+- query validation rejects comments, DDL/DML, file access, procedure calls, and unsafe functions
+
+### Production guidance
+
+- use a dedicated MySQL account with `SELECT` only
+- restrict the source IP or network origin of that account
+- prefer HTTPS in front of the app
+- leave `CORS_ORIGINS` empty for the bundled same-origin frontend
+- keep one backend worker if using in-memory sessions
+- use Redis or shared storage for multi-instance rate limiting if scaling out
+- never enable the disposable integration profile in production
 
 ## Create a read-only MySQL account
 
-Run as a MySQL administrator and replace the example host, user, password, and database. Create and deliver the secret through your approved secret-management process; do not paste a real password into source files, shell history, tickets, or chat:
+MySQL admin steps:
 
 ```sql
 CREATE USER 'sqlrefine_reader'@'sqlrefine-host.example' IDENTIFIED BY '<strong-random-secret>' REQUIRE SSL;
@@ -88,37 +229,18 @@ FLUSH PRIVILEGES;
 SHOW GRANTS FOR 'sqlrefine_reader'@'sqlrefine-host.example';
 ```
 
-Do not grant `FILE`, `PROCESS`, `SUPER`, `EXECUTE`, DDL, or DML privileges. Prefer a staging/read-replica endpoint and network allowlists. A user with access to several databases will see each one in the selector.
+Recommended rules:
 
-## TLS
+- do not grant `FILE`, `PROCESS`, `SUPER`, `EXECUTE`, DDL, or DML
+- prefer a replica or staging database whenever possible
+- restrict network access to trusted sources
+- prefer TLS and certificate verification in production
 
-Enable TLS in the connection form. Set `MYSQL_SSL_CA` to a CA bundle path mounted into the backend when using a private CA. Leave certificate verification enabled in production. Disabling verification encrypts traffic but does not authenticate the server and is vulnerable to interception.
+## TLS and certificate handling
 
-## Analysis modes
+Enable TLS in the connection form if your MySQL deployment requires it.
 
-### Plan only — default
-
-Uses `EXPLAIN FORMAT=JSON`. MySQL produces estimates without executing the SELECT. The UI displays estimated access operations, rows, and optimizer cost. Estimated cost is not elapsed time.
-
-### Runtime benchmark — explicit confirmation
-
-Uses `EXPLAIN ANALYZE`, which executes the SELECT. SQLRefine alternates original-first and optimized-first rounds, runs configurable warm-ups, and reports individual samples, median wall-clock time, and variance. Timeouts reduce risk but cannot guarantee zero impact. Never benchmark untrusted queries against a production primary.
-
-## Optimizer safety
-
-SQLRefine may apply only narrow, schema-verified rewrites:
-
-- simple `SELECT * FROM one_table` expansion using visible columns;
-- `YEAR()` or combined `YEAR()`/`MONTH()` to half-open ranges after confirming a temporal column type.
-
-The following remain suggestions because they may change duplicates, NULL behavior, ordering, casing, or row counts:
-
-- `OR` to `UNION ALL`;
-- removing `DISTINCT`;
-- unconditional `IN` to `EXISTS`;
-- removing case-conversion functions;
-- inventing a `LIMIT`;
-- substring, rounding, or collation-dependent rewrites.
+Set `MYSQL_SSL_CA` to a CA bundle path when using a private CA. Leave certificate verification enabled in production. Disabling verification encrypts traffic but does not validate the server identity.
 
 ## Docker deployment
 
@@ -127,11 +249,9 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Open `http://localhost:8080` for local evaluation. In a real deployment, publish the frontend through an HTTPS reverse proxy and enter a MySQL hostname that is routable from the backend container. SQLRefine deliberately does not inject host-machine aliases or assume where the customer database is located.
+Open `http://localhost:8080` for the containerized frontend. In real deployments, publish through a reverse proxy with HTTPS and configure the backend to reach a MySQL hostname that is routable from the backend container.
 
-The bundled frontend calls `/api` on the same origin, so `CORS_ORIGINS` should remain empty. Set it only when a separately hosted, trusted frontend must call the API directly. Never use `*` for a credential-handling deployment.
-
-An optional disposable MySQL 8 service is available for integration work:
+Optional demo MySQL service:
 
 ```bash
 export MYSQL_DEMO_ROOT_PASSWORD='<temporary-random-root-secret>'
@@ -139,74 +259,56 @@ export MYSQL_DEMO_PASSWORD='<temporary-random-reader-secret>'
 docker compose --profile integration up --build
 ```
 
-Windows PowerShell uses `$env:MYSQL_DEMO_ROOT_PASSWORD = '...'` and `$env:MYSQL_DEMO_PASSWORD = '...'` instead. The profile has no password defaults and fails closed when the variables are empty. From SQLRefine, its hostname is `mysql-integration`, port `3306`, database `sqlrefine_demo`, user `sqlrefine`, and password from `MYSQL_DEMO_PASSWORD`. This service is disposable test infrastructure, not a production database.
+Windows PowerShell:
 
-### Production checklist
-
-- Terminate HTTPS at a trusted reverse proxy and add HSTS there after HTTPS is verified.
-- Keep the backend network-private; expose only the frontend proxy.
-- Inject `.env` values with the deployment platform's secret mechanism and never bake `.env*`, keys, or certificates into images.
-- Use a dedicated, origin-restricted, TLS-enabled MySQL account with only `SELECT` on the intended databases.
-- Keep `CORS_ORIGINS` empty for the bundled same-origin deployment or list exact trusted origins for split hosting.
-- Keep one backend worker while credentials are stored in process memory. Use an encrypted shared session implementation before scaling horizontally.
-- Use a shared rate-limit backend such as Redis before running multiple application instances.
-- Do not enable the disposable `integration` Compose profile in production.
-
-## Configuration
-
-| Variable | Default | Purpose |
-| --- | ---: | --- |
-| `CORS_ORIGINS` | empty | Exact comma-separated browser origins; empty allows same-origin use only |
-| `CONNECTION_SESSION_TTL_SECONDS` | `1800` | Idle lifetime of server-side credentials |
-| `MAX_CONNECTION_SESSIONS` | `100` | Maximum in-memory sessions |
-| `DB_CONNECT_TIMEOUT_SECONDS` | `5` | MySQL connection timeout |
-| `DB_READ_TIMEOUT_SECONDS` | `30` | Socket read timeout |
-| `STATEMENT_TIMEOUT_MS` | `10000` | MySQL `MAX_EXECUTION_TIME` per SELECT |
-| `RUNTIME_WARMUPS` | `1` | Unrecorded benchmark rounds |
-| `RUNTIME_SAMPLES` | `3` | Recorded rounds, capped at 9 |
-| `SCHEMA_MAX_TABLES` | `500` | Schema response table cap |
-| `SCHEMA_MAX_COLUMNS` | `10000` | Schema response column cap |
-| `MYSQL_SSL_CA` | empty | Backend path to a CA bundle |
-| `RATELIMIT_STORAGE_URI` | `memory://` | Use Redis for multi-instance rate limits |
+```powershell
+$env:MYSQL_DEMO_ROOT_PASSWORD = '...'
+$env:MYSQL_DEMO_PASSWORD = '...'
+```
 
 ## API overview
 
-- `GET /api/health` and `GET /api/ready`
+Common endpoints:
+
+- `GET /api/health`
+- `GET /api/ready`
 - `POST /api/connections/test`
 - `POST /api/connection-sessions`
 - `DELETE /api/connection-sessions/current`
 - `GET /api/databases`
 - `GET /api/schema?database=...`
-- `POST /api/analyze` with `mode: "plan"` or confirmed `mode: "runtime"`
+- `POST /api/analyze`
 
-Authenticated workflow calls require the opaque `X-Connection-Session` header. It is not a MySQL password and is never persisted by the supplied frontend.
+Authenticated requests require the `X-Connection-Session` header.
 
-## Tests
+## Testing
 
 ```bash
 cd backend
 pytest -q
 
 cd ../frontend
-npm ci
+npm install
 npm run build
 ```
 
-To run the optional MySQL integration test, start the integration profile and set all five `MYSQL_INTEGRATION_HOST`, `MYSQL_INTEGRATION_PORT`, `MYSQL_INTEGRATION_USER`, `MYSQL_INTEGRATION_PASSWORD`, and `MYSQL_INTEGRATION_DATABASE` variables for the test process. The test has no credential or database-name fallbacks.
-
 ## Troubleshooting
 
-- **`cryptography package is required`**: reinstall pinned backend requirements. `cryptography` is included.
-- **Connection refused**: verify routing from the backend container/host, not from the browser. MySQL may be bound only to `127.0.0.1`.
-- **Access denied**: inspect `SHOW GRANTS`, account host restrictions, password, database permission, and TLS requirements.
-- **Certificate failure**: mount the correct CA bundle and set `MYSQL_SSL_CA`; do not disable verification in production.
-- **Query timeout**: reduce query scope or review indexes using plan-only mode before increasing limits.
-- **Session expired**: reconnect; credentials are deliberately not persisted.
-- **No optimized comparison**: no rewrite could be proven semantics-preserving. Suggestions are still displayed.
+- `cryptography package is required`: reinstall pinned backend dependencies
+- connection refused: check routing from the backend host, not the browser
+- access denied: verify user privileges, host restrictions, TLS policy, and password
+- certificate failure: validate the CA bundle and backend configuration
+- query timeout: reduce scope or analyze in plan-only mode first
+- session expired: reconnect and resubmit the connection session
+- no optimization: the rewrite could not be proven safe; suggestions may still appear
 
-## Remaining limitations
+## Current limitations
 
-- The in-memory credential store requires one backend worker and loses sessions on restart.
-- SQLGlot provides a strong parser boundary, but database privileges and isolation remain mandatory because parser defenses are not infallible.
-- Schema discovery is capped and loaded per database rather than paginated.
-- Benchmarks are workload-sensitive and not substitutes for production observability or controlled load testing.
+- the in-memory credential store requires a single backend worker and expires on restart
+- schema discovery is capped and loaded per database rather than paginated
+- runtime benchmarks are workload-sensitive and should not replace production observability or controlled load testing
+- SQLGlot enforces a strong parse boundary, but database privileges and isolation remain critical
+
+## Summary
+
+SQLRefine is meant for teams that want safer MySQL query analysis and conservative optimization guidance without making the browser a privileged database client. It favors correctness, explainability, and safe defaults over aggressive rewriting.
