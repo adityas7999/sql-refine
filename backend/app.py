@@ -44,6 +44,7 @@ def create_app(config_object=Config):
     app.view_functions["api.test_connection"] = limiter.limit("10 per minute")(app.view_functions["api.test_connection"])
     app.view_functions["api.create_connection_session"] = limiter.limit("10 per minute")(app.view_functions["api.create_connection_session"])
     app.view_functions["api.analyze"] = limiter.limit("20 per minute")(app.view_functions["api.analyze"])
+    app.view_functions["api.compare_queries"] = limiter.limit("20 per minute")(app.view_functions["api.compare_queries"])
 
     @app.get("/")
     def root():
