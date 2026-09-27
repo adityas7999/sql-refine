@@ -8,6 +8,7 @@ from analyzer import benchmark_pair, calculate_metrics, explain_json
 from audit import audit
 from connection_manager import parse_connection_settings
 from errors import ValidationError
+from index_advisor import suggest_indexes
 from optimizer import optimize_sql
 from schema_introspection import inspect_schema, list_databases, table_columns
 from security import validate_identifier, validate_read_only_query
@@ -140,6 +141,7 @@ def analyze():
         resolve_columns, resolve_type = _schema_context(connection, database, query)
         optimization = optimize_sql(query, resolve_columns, resolve_type)
         optimized_query = optimization.optimized_query if optimization.changed else None
+        index_suggestions = suggest_indexes(connection, database, optimized_query or query)
         if mode == "plan":
             original = explain_json(connection, query)
             optimized = explain_json(connection, optimized_query) if optimized_query else None
@@ -155,7 +157,7 @@ def analyze():
     result = {
         "database": database, "mode": mode, "original": original, "optimized": optimized,
         "proposedQuery": optimization.optimized_query if optimization.changed else None,
-        "suggestions": optimization.suggestions,
+        "suggestions": optimization.suggestions + index_suggestions,
         "metrics": calculate_metrics(original, optimized),
         "warnings": (["EXPLAIN ANALYZE executes the query. Measurements are samples, not guarantees."] if mode == "runtime" else []),
     }
@@ -202,6 +204,10 @@ def compare_queries():
 
     session_id = _session_id()
     with _manager().connect(session_id, database) as connection:
+        index_suggestions = {
+            "original": suggest_indexes(connection, database, original_query),
+            "candidate": suggest_indexes(connection, database, candidate_query),
+        }
         if mode == "plan":
             original = explain_json(connection, original_query)
             candidate = explain_json(connection, candidate_query)
@@ -223,6 +229,7 @@ def compare_queries():
     response = jsonify({
         "database": database, "mode": mode, "original": original, "candidate": candidate,
         "metrics": calculate_metrics(original, candidate),
+        "indexSuggestions": index_suggestions,
         "previews": previews,
         "warnings": [
             "Plans and samples do not prove output equivalence or general performance.",

@@ -158,3 +158,18 @@ def test_preview_limits_rows_columns_and_cell_size():
     assert result["rows"][0][0] is None
     assert len(result["rows"][0][1]) == 160
     assert result["truncatedColumns"] is True
+
+
+def test_compare_returns_advisory_index_findings_for_both_queries():
+    plan = lambda _connection, query: {
+        "query": query, "mode": "plan", "plan": [], "estimatedCost": 1, "runtime": None,
+    }
+    finding = {"rule": "missing-index", "column": "rated_date", "applied": False}
+    with patch("routes.query_routes.explain_json", side_effect=plan), \
+         patch("routes.query_routes.suggest_indexes", side_effect=[[], [finding]]) as advisor:
+        response = client().post("/api/compare", headers={"X-Connection-Session": "opaque"}, json={
+            "database": "shop", "originalQuery": "SELECT 1", "candidateQuery": "SELECT 2",
+        })
+    assert response.status_code == 200
+    assert response.get_json()["indexSuggestions"] == {"original": [], "candidate": [finding]}
+    assert advisor.call_count == 2

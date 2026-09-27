@@ -1,5 +1,6 @@
 import { Alert, Button, Card, Col, Form, Row, Table } from 'react-bootstrap'
 import MetricsComparison from './MetricsComparison.jsx'
+import OptimizationHints from './OptimizationHints.jsx'
 import QueryResult from './QueryResult.jsx'
 
 function Preview({ title, preview }) {
@@ -37,6 +38,10 @@ export default function ManualComparison({ original, setOriginal, candidate, set
     {result && <>
       {result.warnings?.map((warning) => <Alert variant="warning" key={warning}>{warning}</Alert>)}
       <MetricsComparison metrics={result.metrics} mode={result.mode} hasOptimized />
+      <div className="compare-results">
+        <OptimizationHints title="Original query index suggestions" suggestions={result.indexSuggestions?.original} emptyMessage="No recommendation for a supported simple predicate; this does not prove the indexes are optimal." />
+        <OptimizationHints title="Candidate query index suggestions" suggestions={result.indexSuggestions?.candidate} emptyMessage="No recommendation for a supported simple predicate; this does not prove the indexes are optimal." />
+      </div>
       <div className="compare-results"><QueryResult title="Original query" result={result.original} accent="original" /><QueryResult title="Candidate query" result={result.candidate} accent="optimized" /></div>
       {result.previews && <div className="compare-results"><Preview title="Original" preview={result.previews.original} /><Preview title="Candidate" preview={result.previews.candidate} /></div>}
     </>}
